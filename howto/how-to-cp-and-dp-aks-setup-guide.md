@@ -384,7 +384,7 @@ helm repo update
 kubectl create namespace cert-manager
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
-  --version v1.13.3 \
+  --version v1.17.1 \
   --set installCRDs=true
 
 # Verify installation
@@ -435,77 +435,44 @@ export AZURE_STORAGE_KEY
 
 ```bash
 # Add TIBCO helm repo
-helm repo add tibco-platform https://tibcosoftware.github.io/tp-helm-charts
+helm repo add tibco-platform "${TP_TIBCO_HELM_CHART_REPO}"
 helm repo update
 ```
 
-**Deploy Azure Disk Storage Class** (for PostgreSQL, EMS):
+**Deploy Azure Disk and Azure Files Storage Classes using dp-config-aks**:
+
+> [!IMPORTANT]
+> Storage classes must be installed in the `storage-system` namespace (not `kube-system`) using the `dp-config-aks` chart with `--labels layer=1` for correct dependency tracking during upgrades and uninstalls.
 
 ```bash
-# Create values file for Azure Disk
-cat > azure-disk-values.yaml <<EOF
+helm upgrade --install --wait --timeout 1h --create-namespace \
+  -n storage-system dp-config-aks-storage dp-config-aks \
+  --labels layer=1 \
+  --repo "${TP_TIBCO_HELM_CHART_REPO}" --version "^1.0.0" -f - <<EOF
+httpIngress:
+  enabled: false
+clusterIssuer:
+  create: false
 storageClass:
-  name: azure-disk-sc
-  provisioner: disk.csi.azure.com
-  parameters:
-    storageaccounttype: Premium_LRS
-    kind: Managed
-  reclaimPolicy: Retain
-  volumeBindingMode: WaitForFirstConsumer
-  allowVolumeExpansion: true
+  azuredisk:
+    enabled: ${TP_DISK_ENABLED}
+    name: ${TP_DISK_STORAGE_CLASS}
+    volumeBindingMode: Immediate
+    reclaimPolicy: "Delete"
+    parameters:
+      skuName: Premium_LRS
+  azurefile:
+    enabled: ${TP_FILE_ENABLED}
+    name: ${TP_FILE_STORAGE_CLASS}
+    volumeBindingMode: Immediate
+    reclaimPolicy: "Delete"
+    parameters:
+      allowBlobPublicAccess: "false"
+      skuName: Premium_LRS
 EOF
 
-# Install Azure Disk storage class chart
-helm install azure-disk-sc tibco-platform/dp-config-aks \
-  --namespace kube-system \
-  --values azure-disk-values.yaml \
-  --set storageClass.enabled=true \
-  --set ingressClass.enabled=false
-
 # Verify
-kubectl get storageclass azure-disk-sc
-```
-
-**Deploy Azure Files Storage Class** (for BWCE, shared storage):
-
-```bash
-# Create Kubernetes secret for Azure Files
-kubectl create secret generic azure-storage-secret \
-  --from-literal=azurestorageaccountname="$AZURE_STORAGE_ACCOUNT" \
-  --from-literal=azurestorageaccountkey="$AZURE_STORAGE_KEY" \
-  --namespace kube-system
-
-# Create values file for Azure Files
-cat > azure-files-values.yaml <<EOF
-storageClass:
-  name: azure-files-sc
-  provisioner: file.csi.azure.com
-  parameters:
-    storageAccount: $AZURE_STORAGE_ACCOUNT
-    resourceGroup: $AZURE_STORAGE_RESOURCE_GROUP
-    skuName: Premium_LRS
-  reclaimPolicy: Retain
-  volumeBindingMode: Immediate
-  allowVolumeExpansion: true
-  mountOptions:
-    - dir_mode=0777
-    - file_mode=0777
-    - uid=0
-    - gid=0
-    - mfsymlinks
-    - cache=strict
-    - actimeo=30
-EOF
-
-# Install Azure Files storage class
-helm install azure-files-sc tibco-platform/dp-config-aks \
-  --namespace kube-system \
-  --values azure-files-values.yaml \
-  --set storageClass.enabled=true \
-  --set ingressClass.enabled=false
-
-# Verify
-kubectl get storageclass azure-files-sc
+kubectl get storageclass
 ```
 
 ### Step 3.3: Verify Storage Classes
@@ -515,35 +482,15 @@ kubectl get storageclass azure-files-sc
 kubectl get storageclass
 
 # Expected output:
-# NAME                    PROVISIONER          RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION
-# azure-disk-sc           disk.csi.azure.com   Retain          WaitForFirstConsumer   true
-# azure-files-sc          file.csi.azure.com   Retain          Immediate              true
-# default (default)       disk.csi.azure.com   Delete          WaitForFirstConsumer   true
-# managed                 disk.csi.azure.com   Delete          WaitForFirstConsumer   true
-# managed-csi             disk.csi.azure.com   Delete          WaitForFirstConsumer   true
-# managed-csi-premium     disk.csi.azure.com   Delete          WaitForFirstConsumer   true
+# NAME                    PROVISIONER          RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION
+# azure-disk-sc           disk.csi.azure.com   Delete          Immediate           true
+# azure-files-sc          file.csi.azure.com   Delete          Immediate           true
+# default (default)       disk.csi.azure.com   Delete          WaitForFirstConsumer true
+# managed-csi             disk.csi.azure.com   Delete          WaitForFirstConsumer true
+# managed-csi-premium     disk.csi.azure.com   Delete          WaitForFirstConsumer true
 
-# Test Azure Files storage class
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: test-azure-files-pvc
-  namespace: default
-spec:
-  accessModes:
-    - ReadWriteMany
-  storageClassName: azure-files-sc
-  resources:
-    requests:
-      storage: 1Gi
-EOF
-
-# Check PVC status
-kubectl get pvc test-azure-files-pvc
-
-# Clean up test PVC
-kubectl delete pvc test-azure-files-pvc
+# Verify the Helm release is labeled correctly
+helm list -n storage-system --selector layer=1
 ```
 
 ---
@@ -561,6 +508,9 @@ TIBCO Platform supports multiple ingress controllers. Choose **Traefik 3.3.4** (
 
 **Step 4.1: Install Traefik using dp-config-aks**
 
+> [!IMPORTANT]
+> Install Traefik using the `dp-config-aks` chart into the `ingress-system` namespace with `--labels layer=1`. Do **not** install Traefik directly via its own Helm chart — the `dp-config-aks` wrapper ensures correct AKS integration, layer labeling, and External DNS annotation wiring.
+
 ```bash
 # Set ingress variables
 export TP_INGRESS_CLASS="traefik"
@@ -574,6 +524,9 @@ clusterIssuer:
   create: false
 httpIngress:
   enabled: false
+ingressClass:
+  enabled: true
+  isDefaultClass: true
 traefik:
   enabled: true
   service:
@@ -583,9 +536,7 @@ traefik:
       service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /healthz
   ingressRoute:
     dashboard:
-      enabled: true
-      matchRule: Host(\`traefik.${TP_DOMAIN}\`)
-      entryPoints: ["websecure"]
+      enabled: false
   ports:
     web:
       redirectTo:
@@ -598,67 +549,27 @@ traefik:
   tlsStore:
     default:
       defaultCertificate:
-        # Set certificate created in Part 7
         secretName: tp-certificate-main-ingress
-EOF
-    tls:
+  providers:
+    kubernetesCRD:
       enabled: true
-    http3:
-      enabled: false
-
-ingressClass:
-  enabled: true
-  isDefaultClass: true
-
-providers:
-  kubernetesCRD:
-    enabled: true
-    allowCrossNamespace: true
-  kubernetesIngress:
-    enabled: true
-    allowExternalNameServices: true
-
-logs:
-  general:
-    level: INFO
-  access:
-    enabled: true
-
-resources:
-  requests:
-    cpu: "500m"
-    memory: "512Mi"
-  limits:
-    cpu: "2000m"
-    memory: "2Gi"
+      allowCrossNamespace: true
+    kubernetesIngress:
+      enabled: true
+      allowExternalNameServices: true
+  logs:
+    general:
+      level: INFO
+    access:
+      enabled: true
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
 EOF
-
-# Create namespace
-kubectl create namespace traefik
-
-# Install Traefik
-helm install traefik traefik/traefik \
-  --namespace traefik \
-  --values traefik-values.yaml \
-  --version 33.4.0
-
-# Verify installation
-kubectl get pods -n traefik
-kubectl get svc -n traefik
-```
-
-**Step 4.2: Get Load Balancer IP**
-
-```bash
-# Get the external IP (may take a few minutes)
-kubectl get svc traefik -n traefik --watch
-
-# Save the external IP
-export INGRESS_LOAD_BALANCER_IP=$(kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-echo "Ingress Load Balancer IP: $INGRESS_LOAD_BALANCER_IP"
-```
-
 ```
 
 **Step 4.2: Verify Traefik Deployment**
@@ -845,7 +756,7 @@ export POSTGRES_USER="postgres"
 echo "PostgreSQL Host: $POSTGRES_HOST"
 
 # Set host for in-cluster
-export POSTGRES_HOST="postgresql.tibco-cp.svc.cluster.local"
+export POSTGRES_HOST="postgres-${CP_INSTANCE_ID}-postgresql.${CP_INSTANCE_ID}-ns.svc.cluster.local"
 ```
 
 ---
@@ -875,7 +786,7 @@ az network dns zone show \
 
 ```bash
 # Get Load Balancer IP (if not already set)
-export INGRESS_LOAD_BALANCER_IP=$(kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export INGRESS_LOAD_BALANCER_IP=$(kubectl get svc dp-config-aks-ingress-traefik -n ingress-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # Create wildcard A record for Control Plane MY domain
 az network dns record-set a add-record \
@@ -1268,16 +1179,19 @@ global:
       storageClassName: "${TP_FILE_STORAGE_CLASS}"
     
     # Database Configuration
-    db_host: "${POSTGRES_HOST}"
-    db_name: "postgres"
-    db_port: ${POSTGRES_PORT}
-    db_username: "postgres"
-    db_password: "postgres"  # Or use secret reference
-    db_secret_name: "postgres-${CP_INSTANCE_ID}-postgresql"
-    db_ssl_mode: "disable"  # Use "require" for Azure PostgreSQL
-    # Uncomment for SSL/TLS database connections (Azure PostgreSQL)
-    # db_ssl_root_cert_secret_name: "db-ssl-root-cert"
-    # db_ssl_root_cert_filename: "db_ssl_root.cert"
+    db:
+      vendor: "postgres"
+      host: "${POSTGRES_HOST}"
+      port: ${POSTGRES_PORT}
+      sslMode: "disable"  # Use "require" for Azure PostgreSQL
+      sslRootCert: ""
+      # For in-cluster PostgreSQL (dp-config-aks):
+      secretName: "postgres-${CP_INSTANCE_ID}-postgresql"
+      adminUsername: "postgres"
+      adminPasswordKey: "postgres-password"
+      # Uncomment for SSL/TLS database connections (Azure PostgreSQL)
+      # sslRootCertSecretName: "db-ssl-root-cert"
+      # sslRootCertFilename: "db_ssl_root.cert"
     
     # Email Server Configuration
     emailServerType: "smtp"  # Options: smtp, ses, sendgrid
@@ -1498,15 +1412,18 @@ helm uninstall tibco-cp-bw -n ${CP_INSTANCE_ID}-ns
 ### Step 8.8: Access Control Plane UI
 
 ```bash
-# Get Control Plane URL
-export CP_UI_URL="https://account.${CP_MY_DNS_DOMAIN}"
+# Control Plane Admin Portal URL (adminHostPrefix defaults to "admin")
+export CP_ADMIN_URL="https://admin.${CP_MY_DNS_DOMAIN}"
 
 echo "==============================================="
-echo "TIBCO Platform Control Plane URL:"
-echo "$CP_UI_URL"
+echo "TIBCO Platform Control Plane Admin Portal:"
+echo "$CP_ADMIN_URL"
 echo "==============================================="
 echo "Username: admin"
 echo "Password: (configured during initial setup)"
+echo ""
+echo "After login, create a subscription to get:"
+echo "  Subscription Portal: https://<hostPrefix>.${CP_MY_DNS_DOMAIN}"
 echo "==============================================="
 ```
 
@@ -1744,7 +1661,7 @@ The `dp-core-infrastructure` chart deploys the core Data Plane components includ
 
 **Get Data Plane Registration Information from Control Plane UI**:
 
-1. Login to Control Plane UI: `https://account.${CP_MY_DNS_DOMAIN}`
+1. Login to Control Plane UI: `https://admin.${CP_MY_DNS_DOMAIN}`
 2. Navigate to **Settings** → **Clusters**
 3. Click **Add Cluster**
 4. Select **AKS** as cluster type
@@ -1835,7 +1752,7 @@ kubectl logs -n ${DP_NAMESPACE} -l app.kubernetes.io/name=tp-provisioner-agent -
 
 **Verify Data Plane in Control Plane UI**:
 
-1. Login to Control Plane UI: `https://account.${CP_MY_DNS_DOMAIN}`
+1. Login to Control Plane UI: `https://admin.${CP_MY_DNS_DOMAIN}`
 2. Navigate to **Settings** → **Clusters**
 3. Your Data Plane cluster should appear with:
    - **Name**: Based on ${DP_INSTANCE_ID}
@@ -1890,7 +1807,7 @@ kubectl get statefulsets -n ${DP_NAMESPACE}
 
 ```bash
 # Test Control Plane MY domain
-curl -k -I https://account.$TP_CP_MY_DOMAIN
+curl -k -I https://admin.$CP_MY_DNS_DOMAIN
 
 # Expected: HTTP/2 200 or 302 (redirect to login)
 
@@ -1905,7 +1822,7 @@ curl -k -I https://tunnel.$TP_CP_TUNNEL_DOMAIN
 ```bash
 # From within the Data Plane namespace, test CP connectivity
 kubectl run test-dp-cp-connection --image=curlimages/curl --rm -it --restart=Never -n $TP_DP_NAMESPACE -- \
-  curl -k -I https://account.$TP_CP_MY_DOMAIN
+  curl -k -I https://admin.$CP_MY_DNS_DOMAIN
 
 # Expected: HTTP/2 200 or 302
 ```
@@ -1952,7 +1869,7 @@ kubectl get pvc -n $TP_DP_NAMESPACE
 ```bash
 # Test DNS resolution from Data Plane pods
 kubectl run dns-test --image=busybox --rm -it --restart=Never -n $TP_DP_NAMESPACE -- \
-  nslookup account.$TP_CP_MY_DOMAIN
+  nslookup admin.$CP_MY_DNS_DOMAIN
 
 # Expected: Should resolve to Load Balancer IP
 
@@ -1992,13 +1909,15 @@ The values file (cp-values.yaml) **must** include this section under `global.ext
 ```yaml
 global:
   external:
-    db_host: "${POSTGRES_HOST}"
-    db_name: "postgres"
-    db_port: ${POSTGRES_PORT}
-    db_username: "postgres"
-    db_password: "postgres"
-    db_secret_name: "postgres-${CP_INSTANCE_ID}-postgresql"
-    db_ssl_mode: "disable"
+    db:
+      vendor: "postgres"
+      host: "${POSTGRES_HOST}"
+      port: ${POSTGRES_PORT}
+      sslMode: "disable"
+      sslRootCert: ""
+      secretName: "postgres-${CP_INSTANCE_ID}-postgresql"
+      adminUsername: "postgres"
+      adminPasswordKey: "postgres-password"
 ```
 
 3. **Verify after deployment:**
@@ -2060,10 +1979,10 @@ kubectl get ingress -n $TP_CP_NAMESPACE
 kubectl logs -n traefik -l app.kubernetes.io/name=traefik -f
 
 # Verify Load Balancer IP
-kubectl get svc traefik -n traefik
+kubectl get svc dp-config-aks-ingress-traefik -n ingress-system
 
 # Test DNS resolution
-nslookup account.$TP_CP_MY_DOMAIN
+nslookup admin.$CP_MY_DNS_DOMAIN
 
 # Common fixes:
 # - DNS not configured: Add DNS records pointing to Load Balancer IP
@@ -2083,14 +2002,14 @@ kubectl logs -n $TP_DP_NAMESPACE -l app.kubernetes.io/component=dp-core-ops -f
 
 # Verify DNS resolution from Data Plane
 kubectl run dns-test --image=busybox --rm -it --restart=Never -n $TP_DP_NAMESPACE -- \
-  nslookup account.$TP_CP_MY_DOMAIN
+  nslookup admin.$CP_MY_DNS_DOMAIN
 
 # Check Data Plane token secret
 kubectl get secret tibco-dp-token -n $TP_DP_NAMESPACE
 
 # Verify network connectivity
 kubectl run netshoot --image=nicolaka/netshoot --rm -it --restart=Never -n $TP_DP_NAMESPACE -- \
-  curl -k -v https://account.$TP_CP_MY_DOMAIN
+  curl -k -v https://admin.$CP_MY_DNS_DOMAIN
 
 # Common fixes:
 # - Invalid token: Re-generate token from Control Plane UI
@@ -2226,7 +2145,7 @@ You have successfully deployed TIBCO Platform Control Plane and Data Plane on Az
 
 ### Access Information
 
-- **Control Plane UI**: https://account.${TP_CP_MY_DOMAIN}
+- **Control Plane UI**: https://admin.${CP_MY_DNS_DOMAIN}
 - **Admin Username**: admin
 - **Admin Password**: ${TP_CP_ADMIN_PASSWORD}
 
