@@ -1,8 +1,8 @@
 # TIBCO Platform on Azure Kubernetes Service (AKS) Workshop
 
-> **Current Release:** [v1.16.0](./releases/v1.16.0) | **TIBCO Platform CP Version:** 1.16.0  
+> **Current Release:** [v1.17.0](./releases/v1.17.0) | **TIBCO Platform CP Version:** 1.17.0  
 > 📋 **Release History:** See `releases` folder for all versions  
-> 🔄 **Upgrading from 1.15.0?** See the [1.16.0 Release Notes](./releases/v1.16.0#upgrade-path-from-v1150)
+> 🔄 **Upgrading from 1.16.0?** See the [1.17.0 Release Notes](./releases/v1.17.0#upgrade-path-from-v1160)
 
 This repository provides comprehensive guides and resources for deploying **TIBCO Platform** on **Azure Kubernetes Service (AKS)** clusters. It covers multiple deployment scenarios from basic AKS cluster setup to full Control Plane and Data Plane deployments with observability.
 
@@ -10,7 +10,19 @@ This repository provides comprehensive guides and resources for deploying **TIBC
 
 **⚠️ Important:** Choose the appropriate documentation version for your deployment:
 
-### 🌟 Version 1.16.0 (Current - Recommended for New Deployments)
+### 🌟 Version 1.17.0 (Current - Recommended for New Deployments)
+- ✅ **Webhook Receiver for Alerts**: Integrate alerts with external systems via JSON webhook
+- ✅ **OpenSearch Observability**: Use OpenSearch for Jaeger traces and service logs
+- ✅ **BW6 Lifecycle Management**: Full Agent, Domain, AppSpace, AppNode, App management in UI
+- ✅ **Custom Fluentbit**: Configurable log forwarding for BW5/BW6 containers and Flogo
+- ✅ **Flogo Recipe Customization**: YAML editor for capability recipes; 3 new connectors
+- ✅ **BW5 Hawk REST API**: 31 Hawk methods exposed on port 8090 in BW5CE
+- 📘 [Setup Guide: CP + DP (v1.17)](./howto/how-to-cp-and-dp-aks-setup-guide)
+- 📘 [Quick Reference (v1.17)](./howto/v1.17/QUICK-REFERENCE)
+- 📋 [Release Notes (v1.17.0)](./releases/v1.17.0)
+- 📋 [Documentation Summary](./howto/v1.17/DOCUMENTATION-SUMMARY)
+
+### 📦 Version 1.16.0 (Previous Release)
 - ✅ **License Management**: View details and receive expiration notifications (90/30/7 days)
 - ✅ **BW6 AI Plugin 6.0.0**: RAG (Retrieval-Augmented Generation) capabilities (Preview)
 - ✅ **Enhanced Monitoring**: Historical logs, audit history, and metrics charts for BW5
@@ -37,8 +49,9 @@ This repository provides comprehensive guides and resources for deploying **TIBC
 - 📋 [Release Notes (v1.14.0)](./releases/v1.14.0)
 
 ### 🔄 Upgrading Between Versions
-- **v1.14.0 → v1.15.0**: See [Upgrade Path](./releases/v1.15.0#upgrade-path)
+- **v1.16.0 → v1.17.0**: See [Upgrade Path](./releases/v1.17.0#upgrade-path-from-v1160)
 - **v1.15.0 → v1.16.0**: See [Upgrade Path](./releases/v1.16.0#upgrade-path-from-v1150)
+- **v1.14.0 → v1.15.0**: See [Upgrade Path](./releases/v1.15.0#upgrade-path)
 
 ---
 
@@ -57,7 +70,18 @@ Configure comprehensive monitoring and logging using Prometheus and Elastic Stac
 
 ### 🏗️ Version-Specific Setup Guides
 
-#### Version 1.16.0 (Current Release)
+#### Version 1.17.0 (Current Release)
+**[📖 How to Set Up AKS Cluster with Control Plane and Data Plane (v1.17)](./howto/how-to-cp-and-dp-aks-setup-guide)**
+- 🎯 **Scope**: Complete TIBCO Platform 1.17.0 deployment on AKS
+- 🔧 **New Features**: OpenSearch observability, Webhook alerts, BW6 lifecycle management, Flogo recipe customization
+- ⏱️ **Duration**: 3-4 hours
+
+**[📖 Quick Reference Guide (v1.17)](./howto/v1.17/QUICK-REFERENCE)**
+- 🎯 **Scope**: Quick reference for v1.17.0 configuration and commands
+- 🔧 **Features**: Essential commands, v1.17 snippets, troubleshooting tips
+- ⏱️ **Duration**: Quick lookup
+
+#### Version 1.16.0 (Previous Release)
 **[📖 How to Set Up AKS Cluster with Control Plane and Data Plane (v1.16)](./howto/how-to-cp-and-dp-aks-setup-guide)**
 - 🎯 **Scope**: Complete TIBCO Platform 1.16.0 deployment on AKS
 - 🔧 **New Features**: AI services endpoint, hybrid connectivity enhancements, MCP servers for BW/Flogo
