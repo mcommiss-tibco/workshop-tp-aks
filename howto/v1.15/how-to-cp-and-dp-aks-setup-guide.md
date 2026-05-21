@@ -218,6 +218,7 @@ export AKS_CLUSTER_NAME="aks-tp-cp-dp-v15"
 export AKS_NODE_COUNT=3
 export AKS_NODE_SIZE="Standard_D8s_v3"
 export K8S_VERSION="1.32"
+export AKS_AUTHORIZED_IP_RANGES="xx.xx.xx.xx/32" # IP ranges allowed access to cluster
 
 # TIBCO Platform Configuration
 export TP_VERSION="1.15.0"
@@ -345,6 +346,7 @@ az aks create \
   --enable-managed-identity \
   --generate-ssh-keys \
   --enable-addons monitoring \
+  --api-server-authorized-ip-ranges ${AKS_AUTHORIZED_IP_RANGES}\
   --no-wait
 
 # Wait for cluster creation (takes ~10-15 minutes)
@@ -449,7 +451,7 @@ kubectl create namespace traefik
 # Install Traefik
 helm install traefik traefik/traefik \
   --namespace traefik \
-  --version 32.2.0 \
+  --version 39.0.5 \
   --set ingressRoute.dashboard.enabled=true \
   --set ports.web.redirectTo.port=websecure \
   --set ports.websecure.tls.enabled=true
